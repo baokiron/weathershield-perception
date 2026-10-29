@@ -23,16 +23,18 @@ WeatherShield Perception addresses a core problem in autonomous vehicle computer
 
 ## Project Structure
 
+```
 weathershield-perception/
-├── weathershield-frontend/ # React dashboard
-│ └── src/
-│ ├── components/ # Navbar, SplitDashboard, ImageUploader, BoundingBoxCanvas
-│ └── types/ # Shared TypeScript data contracts (detection.ts)
-├── weathershield-backend/ # Express API gateway
-│ └── src/
-│ ├── controllers/ # detectionController.ts
-│ └── index.ts # Routes: /upload, /api/v1/detect
+├── weathershield-frontend/    # React dashboard
+│   └── src/
+│       ├── components/        # Navbar, SplitDashboard, ImageUploader, BoundingBoxCanvas
+│       └── types/              # Shared TypeScript data contracts (detection.ts)
+├── weathershield-backend/     # Express API gateway
+│   └── src/
+│       ├── controllers/        # detectionController.ts
+│       └── index.ts            # Routes: /upload, /api/v1/detect
 └── README.md
+```
 
 
 ## Features Implemented
