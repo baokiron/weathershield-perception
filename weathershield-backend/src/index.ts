@@ -1,67 +1,110 @@
+import 'dotenv/config';
+import dns from 'dns';
+import fs from 'fs';
+import path from 'path';
 import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
-import path from 'path';
+import mongoose from 'mongoose';
 import { detectImage } from './controller/detectionController';
+import { getMetrics } from './controller/metricsController';
 
+// Force reliable DNS servers — fixes mongodb+srv:// resolution issues on some networks
+dns.setServers(['8.8.8.8', '1.1.1.1']);
 
 const app = express();
-const port = process.env.PORT || 5000
+const port = process.env.PORT || 5000;
+const uploadsDir = path.join(process.cwd(), 'uploads');
+
+fs.mkdirSync(uploadsDir, { recursive: true });
+
+const mongoUri = process.env.MONGODB_URI;
+if (!mongoUri) {
+  console.error('Missing MONGODB_URI in .env');
+  process.exit(1);
+}
+
+mongoose
+  .connect(mongoUri)
+  .then(() => {
+    console.log('MongoDB connected successfully!');
+  })
+  .catch((error) => {
+    console.error('MongoDB connection failed:', error.message);
+    process.exit(1);
+  });
 
 app.use(cors());
 app.use(express.json());
+app.use('/uploads', express.static(uploadsDir));
 
-// Configure where uploaded files get stored
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    // tell multer to save into the 'uploads/' folder
-    cb(null, 'uploads')
+  destination: (_req, _file, cb) => {
+    cb(null, uploadsDir);
   },
-  filename: (req, file, cb) => {
-    // generate a unique filename, e.g. Date.now() + '-' + file.originalname
+  filename: (_req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
     const ext = path.extname(file.originalname);
     cb(null, file.fieldname + '-' + uniqueSuffix + ext);
-  }
+  },
 });
 
-// Create the multer instance using that storage config
 const upload = multer({
   storage,
-  // add a file size limit (in bytes)
-  limits: { fileSize: 5 * 1024 *1024 },
-  // add a fileFilter function to only accept image types
-  fileFilter : (req, file, cb) => {
-
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
     if (!file.mimetype.startsWith('image/')) {
-      cb(null, false)
+      cb(new Error('Only image files are allowed'));
+      return;
     }
-    else {
-      cb(null, true)
-    }
-
-  }
+    cb(null, true);
+  },
 });
 
-app.get('/', (req, res) =>{
-    res.status(200).send('test for server')
-})
-
-// TODO 3: Write the POST /upload route
-app.post('/upload', upload.single('image'), (req, res) => {
-  // if not -> respond with an appropriate error status + message
-  // if yes -> respond with success + the saved filename
-  if (!req.file){
-    res.status(400).send('Not found the file')
-  }
-  else {
-    res.status(200).json({msg: 'Success!', filename: req.file.filename})
-  }
+app.get('/', (_req, res) => {
+  res.status(200).send('test for server');
 });
 
-// Detect image 
+app.post('/upload', (req, res) => {
+  upload.single('image')(req, res, (err) => {
+    if (err instanceof multer.MulterError) {
+      const message =
+        err.code === 'LIMIT_FILE_SIZE' ? 'File too large (max 5MB)' : err.message;
+      res.status(400).json({ message });
+      return;
+    }
+
+    if (err) {
+      res.status(400).json({
+        message: err instanceof Error ? err.message : 'Upload failed',
+      });
+      return;
+    }
+
+    if (!req.file) {
+      res.status(400).json({ message: 'No image file provided' });
+      return;
+    }
+
+    res.status(200).json({ msg: 'Success!', filename: req.file.filename });
+  });
+});
+
 app.post('/api/v1/detect', detectImage);
+app.get('/api/v1/metrics', getMetrics);
+
+app.use((err: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (res.headersSent) {
+    next(err);
+    return;
+  }
+
+  console.error(err);
+  res.status(500).json({
+    message: err instanceof Error ? err.message : 'Internal server error',
+  });
+});
 
 app.listen(port, () => {
-   console.log(`Server is running on port ${port}`)
- });
+  console.log(`Server is running on port ${port}`);
+});
